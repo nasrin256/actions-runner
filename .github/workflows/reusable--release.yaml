@@ -38,7 +38,7 @@ jobs:
 
       # When Renovate has updated the runner version,
       # automatically create a new release into GitHub Releases.
-      - uses: actions/create-github-app-token@af35edadc00be37caa72ed9f3e6d5f7801bfdf09 # v1.11.7
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         id: release-token
         with:
           app-id: ${{ secrets.E2E_TEST_APP_ID }}
@@ -51,7 +51,7 @@ jobs:
           # Trigger the build workflow against the new release
           RELEASE_TOKEN: ${{ steps.release-token.outputs.token }}
       - if: steps.create-release.outputs.comment
-        uses: int128/comment-action@a20dbdebd79ab886a1e7a20d16bfa7dbaa732e5a # v1.33.0
+        uses: int128/comment-action@59f48563abefe4d28326f70ac0dfcbe8311dbee9 # v1.34.0
         with:
           update-if-exists: replace
           post: ${{ steps.create-release.outputs.comment }}

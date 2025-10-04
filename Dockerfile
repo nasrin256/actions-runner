@@ -1,7 +1,5 @@
-ARG RUNNER_VERSION=2.321.0
-
-# extends https://github.com/actions/runner/blob/main/images/Dockerfile
-FROM ghcr.io/actions/actions-runner:${RUNNER_VERSION}
+# https://github.com/actions/runner/blob/main/images/Dockerfile
+FROM ghcr.io/actions/actions-runner:2.328.0@sha256:db0dcae6d28559e54277755a33aba7d0665f255b3bd2a66cdc5e132712f155e0
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -42,14 +40,11 @@ COPY entrypoint.sh /
 
 VOLUME /var/lib/docker
 
-# docker-init sends the signal to children
-ENV RUNNER_MANUALLY_TRAP_SIG=
-
 # Disable the log by default, because it is too large
 ENV ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=
 
 # Align to GitHub-hosted runners (ubuntu-latest)
 ENV LANG=C.UTF-8
 
-ENTRYPOINT ["/usr/bin/docker-init", "--", "/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/docker-init", "-v", "--", "/entrypoint.sh"]
 CMD ["/home/runner/run.sh"]

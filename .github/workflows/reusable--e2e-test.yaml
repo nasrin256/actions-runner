@@ -3,27 +3,36 @@ name: e2e-test
 on:
   workflow_call:
     inputs:
-      runner-image-uri:
+      runner-image-uri-latest:
         type: string
         required: true
-        description: Image URI of runner
-      runner-ubuntu20-image-uri:
+        description: Image URI of runner (latest)
+      runner-image-uri-ubuntu20:
         type: string
         required: true
         description: Image URI of runner (ubuntu20)
+      runner-base-name:
+        type: string
+        description: Base name of runner
+        default: e2e-${{ github.event.pull_request.number || github.ref_name }}
+
+concurrency:
+  # One workflow run per a pull request or pushed branch
+  group: ${{ github.workflow }}--${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   controller:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     defaults:
       run:
         working-directory: e2e-test
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: aquaproj/aqua-installer@f13c5d2f0357708d85477aabe50fd3f725528745 # v3.1.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: aquaproj/aqua-installer@ea518c135a02fc11ff8024364510c181a5c6b342 # v4.0.3
         with:
-          aqua_version: v2.41.0
+          aqua_version: v2.55.0
           working_directory: e2e-test
       - run: make cluster
       - run: make create-github-config-secret
@@ -31,16 +40,32 @@ jobs:
           APP_ID: ${{ secrets.E2E_TEST_APP_ID }}
           APP_INSTALLATION_ID: ${{ secrets.E2E_TEST_APP_INSTALLATION_ID }}
           APP_PRIVATE_KEY: ${{ secrets.E2E_TEST_APP_PRIVATE_KEY }}
-      - run: make deploy
+      - run: make controller
+
+      - run: make runner-scale-set
         env:
-          ARC_RUNNER_NAME: e2e-${{ github.run_id }}
-          ARC_RUNNER_IMAGE_URI: ${{ inputs.runner-image-uri }}
-          ARC_RUNNER_UBUNTU20_NAME: e2e-ubuntu20-${{ github.run_id }}
-          ARC_RUNNER_UBUNTU20_IMAGE_URI: ${{ inputs.runner-ubuntu20-image-uri }}
-      - run: make wait-for-job
+          ARC_RUNNER_NAME: ${{ inputs.runner-base-name }}-latest
+          ARC_RUNNER_IMAGE_URI: ${{ inputs.runner-image-uri-latest }}
+      - run: make runner-scale-set
         env:
-          ARC_RUNNER_NAME: e2e-${{ github.run_id }}
-          ARC_RUNNER_UBUNTU20_NAME: e2e-ubuntu20-${{ github.run_id }}
+          ARC_RUNNER_NAME: ${{ inputs.runner-base-name }}-ubuntu20
+          ARC_RUNNER_IMAGE_URI: ${{ inputs.runner-image-uri-ubuntu20 }}
+
+      # Register a dummy runner scale set to ensure GitHub picks the jobs.
+      - run: sleep 60
+      - run: make runner-scale-set
+        env:
+          ARC_RUNNER_NAME: ${{ inputs.runner-base-name }}-dummy
+          ARC_RUNNER_IMAGE_URI: ${{ inputs.runner-image-uri-latest }}
+
+      - run: make wait-for-runner
+        env:
+          ARC_RUNNER_NAME: ${{ inputs.runner-base-name }}-latest
+      - run: make wait-for-runner
+        env:
+          ARC_RUNNER_NAME: ${{ inputs.runner-base-name }}-ubuntu20
+      - run: make runner-logs
+        if: always()
       - run: make listener-logs
         if: always()
       - run: make undeploy
@@ -48,14 +73,31 @@ jobs:
       - run: make controller-logs
         if: always()
 
-  test:
+  finally-cancel-workflow-run:
+    needs: controller
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            await github.rest.actions.cancelWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            })
+
+  runner-latest:
     uses: ./.github/workflows/reusable--e2e-test-jobs.yaml
     with:
-      runner-name: e2e-${{ github.run_id }}
+      runner-name: ${{ inputs.runner-base-name }}-latest
       expected-image-os: ubuntu22
 
-  test-ubuntu20:
+  runner-ubuntu20:
     uses: ./.github/workflows/reusable--e2e-test-jobs.yaml
     with:
-      runner-name: e2e-ubuntu20-${{ github.run_id }}
+      runner-name: ${{ inputs.runner-base-name }}-ubuntu20
       expected-image-os: ubuntu20

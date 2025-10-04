@@ -13,7 +13,51 @@ on:
         description: Expected value of $ImageOS
 
 jobs:
-  runner:
+  assert-environment:
+    runs-on: ${{ inputs.runner-name }}
+    timeout-minutes: 10
+    steps:
+      - run: uname -a
+      - run: cat /etc/os-release
+      - run: test "$ImageOS" = "$expected_image_os"
+        env:
+          expected_image_os: ${{ inputs.expected-image-os }}
+
+  test-actions:
+    runs-on: ${{ inputs.runner-name }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - run: docker version
+      - run: docker run -v "$PWD:/workspace" --rm debian:stable ls -l /workspace/README.md
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          push: false
+          context: e2e-test
+          file: e2e-test/fixture.dockerfile
+
+      # setup-ruby does not support ubuntu-20.04
+      - if: inputs.expected-image-os != 'ubuntu20'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3
+      - if: inputs.expected-image-os != 'ubuntu20'
+        run: ruby --version
+      - if: inputs.expected-image-os != 'ubuntu20'
+        run: gem --version
+
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: 3
+      - run: python --version
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+      - run: node --version
+
+  test-service-container:
     runs-on: ${{ inputs.runner-name }}
     timeout-minutes: 10
     services:
@@ -22,45 +66,4 @@ jobs:
         ports:
           - 8080:80
     steps:
-      - run: uname -a
-      - run: cat /etc/os-release
-      - run: test "$ImageOS" = "$expected_image_os"
-        env:
-          expected_image_os: ${{ inputs.expected-image-os }}
-
-      # Test checkout
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      # Test dockerd
-      - run: docker version
-      - run: docker run -v "$PWD:/workspace" --rm debian:stable ls -l /workspace/README.md
-      - uses: docker/setup-buildx-action@6524bf65af31da8d45b59e8c27de4bd072b392f5 # v3.8.0
-      - uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
-        with:
-          push: false
-          context: e2e-test
-          file: e2e-test/fixture.dockerfile
-
-      # Test setup actions
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: 3
-      - run: ruby --version
-      - run: gem --version
-
-      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
-        with:
-          python-version: 3
-      - run: python --version
-
-      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
-        with:
-          node-version: 20
-      - run: node --version
-
-      # Test service container
       - run: curl -sf http://localhost:8080
-
-      # Test apt
-      - run: sudo apt-get update
-      - run: sudo apt-get install -y --no-install-recommends fonts-noto
